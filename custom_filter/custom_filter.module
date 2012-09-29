@@ -1,0 +1,174 @@
+<?php
+// $Id$
+/**
+* @file
+* Module for dynamic display of pithy philosophy quotes.
+*/
+/**
+* Implementation of hook_help()
+*/
+function custom_filter_help($path, $arg){
+    if ($path == 'admin/help#custom_filter') {
+	$txt = 'This module displays philosophical quotes in blocks. '.
+	   'It assumes the existence of a content type named "quote".';
+	return '<p>'. t($txt) .'</p>';
+    }
+}
+
+/**
+* Implementation of hook_block().
+*/
+function custom_filter_block($op = 'list', $delta = 0, $edit = array()){
+   switch ($op) {
+	case 'list':
+	   $blocks[0]['info'] = t('Custom Filter');
+	   return $blocks;
+	case 'view':
+	$items = _custom_filter_get();
+//	echo print_r($items);
+	if(!empty($items)){
+	    $content = theme('custom_filter',
+	      // check_plain($items['url'][0]),
+	       $items);
+	    $blocks['subject'] = t('Custom Filter');
+	    $blocks['content'] = $content;
+	    return $blocks;
+	}
+	else{
+           $blocks['subject'] = t('Custom Filter');
+           $blocks['content'] = t('No content');
+           return $blocks;
+	}
+   }
+}
+
+/**
+* Callback to handle requests for philquotes content.
+* @return
+* JSON data.
+*/
+function custom_filter_item() {
+   //_POST
+   $item = _custom_filter_post();
+   drupal_json($item); 
+}
+
+function _custom_filter_post() {
+    $post_item = $_POST['type_id'];
+  //  $mm =count($post_item);
+    if( $post_item == "all"){
+	$sql = "SELECT nid FROM {node} limit 0,5";
+    }
+    else{
+       $sql = "SELECT nid FROM {content_type_group} ".
+            "WHERE field_group_type_value = '$post_item' limit 0,5";
+    }
+    $res = db_query($sql);
+    $items = array();
+    $i = 0 ;
+    while($row = db_fetch_object($res)){
+        $node_id = $row->nid;
+        $item_tmp = node_load($node_id);
+        $items['nid'][$i] = $item_tmp->nid;
+        $items['title'][$i] ="[".$post_item."]" . $item_tmp->title;
+       // $items['body'][$i] = $item_tmp->body;
+        $items['url'][$i] = url("node/".$items['nid'][$i], array('absolute' => TRUE));
+        $i++;
+	$items['num'] = $i;
+    }
+    //$result = "<div class='type-title'><a class='author-title' href='".$items['url'][0]."'</a>".$items['title'][0]+"</div>";
+    return drupal_json($items);
+}
+
+/**
+* Implementaiton of hook_menu()
+*/
+function custom_filter_menu() {
+    $items['filter.json'] = array(
+	'title' => 'Filter AJAX Gateway',
+	'page callback' => '_custom_filter_post',
+	'access arguments' => array('access content'),
+	'type' => MENU_CALLBACK,
+    );
+    return $items;
+}
+
+function _custom_filter_get(){
+    $sql = "SELECT nid FROM node";
+          //  "WHERE field_club_type_value = '杀戮碎岛'";
+    $res = db_query($sql);
+    $items = array();
+    $i = 0 ;
+    while($row = db_fetch_object($res)){
+        $node_id = $row->nid;
+	$item_tmp = node_load($node_id);
+	$items['nid'][$i] = $item_tmp->nid;
+	$items['title'][$i] = $item_tmp->title;
+	$items['body'][$i] = $item_tmp->body;
+	$items['url'][$i] = url("node/".$items['nid'][$i], array('absolute' => TRUE));
+	$i++;
+    }
+    return $items;
+}
+
+function _custom_filter_filter($filter_condition){
+  //  $filter_condition = "content_type_page";
+    $sql = "SELECT * FROM {$filter_condition}";
+    $res = db_query($sql);//搜索数据库，drupal真给力啊！都不用写初始条件了
+    $condition_type = array();
+    $i = 0 ;
+    while($row = db_fetch_object($res)){
+        $condition_type[$i] = $row->field_group_type_value;
+        $i++;
+    }//将提取出的值赋值给数组
+    $condition_result = array_values(array_unique($condition_type));
+    $radio = "<input type='radio' name='filter' value ='all' checked='checked'>All";
+    //将重复的数组值去掉，然后重新排列
+    for( $j = 0 ; $j< count( $condition_result ) ; $j++ ){
+        $tmp ="<input type='radio' name='filter' value = '".$condition_result[$j]."'>$condition_result[$j]";
+        $radio = $radio . $tmp ;
+    }
+    $radio = $radio . "<div><button id='apply'>".t('Apply')."</button></div>";
+    return $radio;
+
+}
+
+/**
+* Implementation of hook_theme().
+*/
+function custom_filter_theme(){
+    return array(
+	'custom_filter' => array(
+	    'arguments' => array('text' => NULL, 'origin' => NULL),
+        ),
+    );
+}
+
+function theme_custom_filter($items){
+ //   $field_label="社团类型";
+
+    $module_path = drupal_get_path('module', 'custom_filter');
+    $full_path = $module_path .'/custom_filter.css';
+    drupal_add_css($full_path);
+    drupal_add_js($module_path .'/custom_filter.js');
+    $opts = array('absolute' => TRUE);
+  //  $json_url = url('filter.json', $opts);
+    $post_url = url('filter.json', $opts);
+ //   echo "fdsafsaf";
+   // echo $post_url;
+    drupal_add_js(
+	array('custom_filter' =>
+	    array("post_url"=>$post_url)), 
+	'setting'
+    );
+    $item = _custom_filter_filter("content_type_group");
+    for( $j = 0 ; $j <= count($items) ; $j++ ){
+	$output = $output . '<div class="type-title"><a class="author-title" href="'.t($items['url'][$j]).'">' 
+		.t(check_plain($items['title'][$j])).'</a></div>';
+
+    }
+    $output = $item.'<div id="philquotes-text">'.$output.'</div>';
+    return $output;
+}
+
+
